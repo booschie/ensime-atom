@@ -58,20 +58,32 @@ addModalPanel = (vue, visible = false) ->
 
 
 withSbt = (callback) ->
-  sbtCmd = atom.config.get('Ensime.sbtExec')
-  if sbtCmd
-    callback(sbtCmd)
+  getAtomSbtCmd = () -> atom.config.get('Ensime.sbtExec')
+  if !getAtomSbtCmd()
+    if process.env.SBT_HOME?
+      envSbtPath = path.normalize "#{process.env.SBT_HOME}#{path.sep}"
+      for sbtExecName in ['sbt', 'sbt.bat']
+        if !getAtomSbtCmd()
+          sbtExecPathUnderTest = "#{envSbtPath}#{sbtExecName}"
+          console.log "Checking out #{sbtExecPathUnderTest}"
+          fs.statSync sbtExecPathUnderTest, (err, stats) ->
+            if stats && stats.isFile()
+              atom.config.set('Ensime.sbtExec', sbtExecPathUnderTest)
+              console.log "Using SBT executive found in SBT_HOME directory: #{sbtExecPathUnderTest}"
+    if !getAtomSbtCmd()
+      dialog = remote.require('dialog')
+      dialog.showOpenDialog(
+        title: "Sorry, but we need you to point out your SBT executive"
+        properties:['openFile']
+        , (filenames) ->
+          atom.config.set('Ensime.sbtExec', filenames[0])
+        )
+    if !getAtomSbtCmd()
+      console.error 'No SBT executive has been provided. Ensime server will stop.'
+      console.log 'Please set SBT executive path in ensime-atom settings. '
+      ensime.selectAndStopAnEnsime()
   else
-    # TODO: try to check if on path, can we do this with fs?
-    dialog = remote.require('dialog')
-    dialog.showOpenDialog(
-      title: "Sorry, but we need you to point out your SBT executive"
-      properties:['openFile']
-      , (filenames) ->
-        sbtCmd = filenames[0]
-        atom.config.set('Ensime.sbtExec', sbtCmd)
-        callback(sbtCmd)
-      )
+    callback(getAtomSbtCmd())
 
 # create classpath file name for ensime server startup
 mkClasspathFileName = (scalaVersion, ensimeServerVersion) ->
